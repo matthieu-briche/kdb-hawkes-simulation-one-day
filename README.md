@@ -13,3 +13,17 @@ Stream Analytics & Feature Store (RTE - Real-Time Engine) :Agrégation temps ré
 Storage & Optimisation HDB :Partitionnement par date/heure, compression ZSTD, utilisation stratégique des attributs (`p#, `s#).   Script de post-traitement EOD (End Of Day) sous PyKX/q.   
 
 API & Dashboard (Python / PyKX Gateway) :Une Gateway Python/FastAPI interrogeant kdb+ via PyKX pour exposer des endpoints REST / WebSockets vers un dashboard léger (Streamlit ou Plotly) affichant le carnet d'ordres animé et les métriques de risque/PnL. 
+
+hft-microstructure-kdb/
+├── docker-compose.yml
+├── README.md                 <-- Schéma d'architecture + explication des métriques quant
+├── src/
+│   ├── feedhandler/          <-- Python/PyKX rejoueur de flux (L2/L3)
+│   ├── q/
+│   │   ├── tp.q              <-- Tickerplant
+│   │   ├── orderbook.q       <-- Engine Carnet d'ordres & Microstructure
+│   │   ├── rdb.q             <-- Real-time DB
+│   │   ├── hdb.q             <-- Historical DB
+│   │   └── analytics.q       <-- Micro-price, VPIN, Spreads, VPWA
+│   └── gateway/              <-- API PyKX / FastAPI
+└── tests/                    <-- Unit tests (q / pytest)
