@@ -27,3 +27,11 @@ hft-microstructure-kdb/
 │   │   └── analytics.q       <-- Micro-price, VPIN, Spreads, VPWA
 │   └── gateway/              <-- API PyKX / FastAPI
 └── tests/                    <-- Unit tests (q / pytest)
+
+pipeline complet:
+
+Modélisation : un processus de Hawkes exponentiel simulé par représentation en grappes (immigrants + descendance), vectorisé en q. Ça montre que tu comprends le modèle, pas seulement que tu appliques une formule.
+Validation statistique rigoureuse : le compensateur ramené à une Exp(1) (théorème de changement de temps), un test KS, l'autocorrélation et le facteur de Fano comparé à la valeur théorique 1/(1−n)². C'est le point le plus différenciant, car beaucoup simulent sans vérifier.
+Stockage kdb+ standard : une HDB partitionnée par date via .Q.dpft, avec l'attribut p# sur sym et un schéma conforme à kdb+tick.
+Analyse : une grille as-of à la milliseconde avec aj.
+Temps réel : un feed qui rejoue la journée en accéléré vers un tickerplant (.u.upd).
