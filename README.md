@@ -45,10 +45,10 @@ Stationary mean rate: $\mu / (1-n)$, i.e. up to ~12 quotes/s on average for TSLA
 
 | File | Role |
 |---|---|
-| `hawkes_quotes.q` | simulation, statistical checks, writes a 10-day partitioned HDB, 1 ms as-of grid |
-| `mle.q` | maximum-likelihood estimation of $(\mu,\alpha,\beta)$ from the HDB, standard errors, goodness of fit |
-| `feed.q` | replays a simulated session into a tickerplant in accelerated time |
-| `sym.q` | kdb+tick schema for the `quote` table |
+| [`hawkes_quotes.q`](hawkes_quotes.q) | simulation, statistical checks, writes a 10-day partitioned HDB, 1 ms as-of grid |
+| [`mle.q`](mle.q) | maximum-likelihood estimation of $(\mu,\alpha,\beta)$ from the HDB, standard errors, goodness of fit |
+| [`feed.q`](feed.q) | replays a simulated session into a tickerplant in accelerated time |
+| [`sym.q`](sym.q) | kdb+tick schema for the `quote` table |
 
 ---
 
@@ -62,7 +62,7 @@ Instead of the classic thinning algorithm (sequential, one event at a time), the
 
 Each generation is processed as a whole vector: no per-event loop.
 
-Prices follow a geometric random walk on the event clock, in integer cents, with a 1–3 cent spread. Timestamps are stored as `timespan` at **1 ms resolution**, partitioned by date with the `p#` attribute on `sym` (standard kdb+tick layout, written with `.Q.dpft`).
+Prices follow a geometric random walk on the event clock, in integer cents, with a 1–3 cent spread. Timestamps are stored as `timespan` at **1 ms resolution**, partitioned by date with the `p#` attribute on `sym` (standard kdb+tick layout, written with `.Q.dpft`). The random seed is fixed (`\S 42`) so every run is reproducible.
 
 ---
 
@@ -90,19 +90,27 @@ $$
 
 - **Optimiser**: a Nelder–Mead simplex written in q, run on $(\log\mu,\ \operatorname{logit} n,\ \log\beta)$ so that positivity and stationarity ($n<1$) hold without constraints.
 - **Standard errors**: inverse of the numerical Hessian of $-\log L$ (observed Fisher information).
-- **Hawkes vs Poisson**: likelihood-ratio test against a homogeneous Poisson process.
+- **Hawkes vs Poisson**: likelihood-ratio test against a homogeneous Poisson process ($\chi^2_2$ at 5 % = 5.99).
 - **Goodness of fit**: KS test on the compensator residuals computed with the *estimated* parameters.
 
 ### Results
 
-<!-- Paste here the tables printed by `q mle.q` -->
+Output of `q mle.q` on the first day of the HDB (seed 42), estimates ± standard error:
 
 | sym | N events | $\mu$ (true → est.) | $\alpha$ (true → est.) | $\beta$ (true → est.) | $n$ (true → est.) | LR vs Poisson |
 |---|---|---|---|---|---|---|
-| AAPL | … | 1.0 → … | 40 → … | 50 → … | 0.80 → … | … |
-| … | | | | | | |
+| AAPL | 116,468 | 1.0 → 0.994 ± 0.007 | 40 → 39.98 ± 0.24 | 50 → 49.97 ± 0.27 | 0.80 → 0.800 | 432,522 |
+| MSFT | 63,648 | 0.8 → 0.804 ± 0.006 | 35 → 34.93 ± 0.28 | 50 → 49.60 ± 0.34 | 0.70 → 0.704 | 207,804 |
+| GOOG | 28,933 | 0.5 → 0.499 ± 0.005 | 30 → 29.74 ± 0.37 | 50 → 49.87 ± 0.51 | 0.60 → 0.596 | 88,088 |
+| AMZN | 47,911 | 0.6 → 0.603 ± 0.005 | 35 → 35.35 ± 0.33 | 50 → 50.11 ± 0.39 | 0.70 → 0.705 | 174,603 |
+| TSLA | 275,796 | 1.2 → 1.195 ± 0.008 | 45 → 44.84 ± 0.20 | 50 → 49.90 ± 0.20 | 0.90 → 0.899 | 1,142,515 |
 
-Key takeaway: the parameters are recovered within about one standard error (≈ 1 % relative), and the 1 ms timestamp quantisation introduces no visible bias even though the excitation memory is only 20 ms.
+Nelder–Mead converges in 53 to 63 iterations, from 0 to 10 seconds per symbol.
+
+- **Parameters are recovered**: every standardised error (estimate − truth) / SE stays below 1.2 in absolute value.
+- **Self-excitation is overwhelming**: the likelihood ratio against a homogeneous Poisson process is in the hundreds of thousands, against a 5 % critical value of 5.99 for $\chi^2_2$.
+- **The residual KS test rejects for all five symbols, and that is informative.** At 1 ms resolution, many events share a timestamp with the previous one (about 30,000 ties for TSLA, 11 % of its events; 2.5 % for GOOG). Each tie gives a compensator increment of exactly 0, so the empirical CDF of the residuals jumps at 0 by the share of ties, while Exp(1) has no mass there: the KS statistic is at least that share, far above the critical value (0.003 to 0.008 here). On the continuous simulated times (`hawkes_quotes.q`) the statistics stay close to the threshold. Timestamp quantisation leaves the parameter estimates unbiased, but with a 20 ms memory, 1 ms is too coarse for residual-based goodness-of-fit tests; spreading ties uniformly within their millisecond before testing would be the natural fix.
+
 
 ---
 
