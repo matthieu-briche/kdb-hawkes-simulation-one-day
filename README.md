@@ -1,48 +1,3 @@
-# kdb-proj-hft
-High-Frequency Market Microstructure &amp; Orderbook Engine (L2/L3) in KDB+/q
-Un projet end-to-end de simulation de marché et d'analytics de microstructure temporelle en temps réel et historique
-
-Architecture du projet (Sur ton GitHub)Feedhandler C++/Python (PyKX) :
-
-Un simulateur/rejoueur de flux L2/L3 (p. ex. rejouer des données ITCH/OUCH ou L2 de Binance/Crypto via WebSockets ou de données historiques NASDAQ).   
-
-Real-Time Orderbook Engine (.q) :Reconstruction in-memory du carnet d'ordres jusqu'au niveau 10 (Depth of Book) à partir des événements de type Add, Cancel, Execute.Maintien dynamique de l'état du carnet et calcul d'indicateurs de microstructure à haute fréquence à chaque tick :Orderbook Imbalance (déséquilibre bid/ask pondéré par la profondeur).Micro-price & Mid-price Drift.Effective & Realized Spread.
-
-Stream Analytics & Feature Store (RTE - Real-Time Engine) :Agrégation temps réel avec aj / asof joins et fenêtres glissantes (xbar).   Moteur de détection d'anomalies / signaux : détection de Spoofing / Large Trades ou de Toxic Flow (VPIN - Volume-Synchronized Probability of Toxicity).
-
-Storage & Optimisation HDB :Partitionnement par date/heure, compression ZSTD, utilisation stratégique des attributs (`p#, `s#).   Script de post-traitement EOD (End Of Day) sous PyKX/q.   
-
-API & Dashboard (Python / PyKX Gateway) :Une Gateway Python/FastAPI interrogeant kdb+ via PyKX pour exposer des endpoints REST / WebSockets vers un dashboard léger (Streamlit ou Plotly) affichant le carnet d'ordres animé et les métriques de risque/PnL. 
-
-hft-microstructure-kdb/
-├── docker-compose.yml
-├── README.md                 <-- Schéma d'architecture + explication des métriques quant
-├── src/
-│   ├── feedhandler/          <-- Python/PyKX rejoueur de flux (L2/L3)
-│   ├── q/
-│   │   ├── tp.q              <-- Tickerplant
-│   │   ├── orderbook.q       <-- Engine Carnet d'ordres & Microstructure
-│   │   ├── rdb.q             <-- Real-time DB
-│   │   ├── hdb.q             <-- Historical DB
-│   │   └── analytics.q       <-- Micro-price, VPIN, Spreads, VPWA
-│   └── gateway/              <-- API PyKX / FastAPI
-└── tests/                    <-- Unit tests (q / pytest)
-
-pipeline complet:
-
-Modélisation : un processus de Hawkes exponentiel simulé par représentation en grappes (immigrants + descendance), vectorisé en q. Ça montre que tu comprends le modèle, pas seulement que tu appliques une formule.
-Validation statistique rigoureuse : le compensateur ramené à une Exp(1) (théorème de changement de temps), un test KS, l'autocorrélation et le facteur de Fano comparé à la valeur théorique 1/(1−n)². C'est le point le plus différenciant, car beaucoup simulent sans vérifier.
-Stockage kdb+ standard : une HDB partitionnée par date via .Q.dpft, avec l'attribut p# sur sym et un schéma conforme à kdb+tick.
-Analyse : une grille as-of à la milliseconde avec aj.
-Temps réel : un feed qui rejoue la journée en accéléré vers un tickerplant (.u.upd).
-
-
-
-
-En anglais : 
-
-
-
 # Hawkes Quote Simulator — kdb+/q
 
 End-to-end simulation of an intraday bid/ask quote stream driven by **self-exciting Hawkes processes**, built entirely in **kdb+/q**: simulation, statistical validation, partitioned historical database, as-of analytics, real-time replay through a tickerplant, and **maximum-likelihood recovery of the model parameters**.
@@ -90,10 +45,10 @@ Stationary mean rate: $\mu / (1-n)$, i.e. up to ~12 quotes/s on average for TSLA
 
 | File | Role |
 |---|---|
-| `hawkes_quotes.q` | simulation, statistical checks, writes a 10-day partitioned HDB, 1 ms as-of grid |
-| `mle.q` | maximum-likelihood estimation of $(\mu,\alpha,\beta)$ from the HDB, standard errors, goodness of fit |
-| `feed.q` | replays a simulated session into a tickerplant in accelerated time |
-| `sym.q` | kdb+tick schema for the `quote` table |
+| [`hawkes_quotes.q`](hawkes_quotes.q) | simulation, statistical checks, writes a 10-day partitioned HDB, 1 ms as-of grid |
+| [`mle.q`](mle.q) | maximum-likelihood estimation of $(\mu,\alpha,\beta)$ from the HDB, standard errors, goodness of fit |
+| [`feed.q`](feed.q) | replays a simulated session into a tickerplant in accelerated time |
+| [`sym.q`](sym.q) | kdb+tick schema for the `quote` table |
 
 ---
 
@@ -107,7 +62,7 @@ Instead of the classic thinning algorithm (sequential, one event at a time), the
 
 Each generation is processed as a whole vector: no per-event loop.
 
-Prices follow a geometric random walk on the event clock, in integer cents, with a 1–3 cent spread. Timestamps are stored as `timespan` at **1 ms resolution**, partitioned by date with the `p#` attribute on `sym` (standard kdb+tick layout, written with `.Q.dpft`).
+Prices follow a geometric random walk on the event clock, in integer cents, with a 1–3 cent spread. Timestamps are stored as `timespan` at **1 ms resolution**, partitioned by date with the `p#` attribute on `sym` (standard kdb+tick layout, written with `.Q.dpft`). The random seed is fixed (`\S 42`) so every run is reproducible.
 
 ---
 
@@ -135,19 +90,22 @@ $$
 
 - **Optimiser**: a Nelder–Mead simplex written in q, run on $(\log\mu,\ \operatorname{logit} n,\ \log\beta)$ so that positivity and stationarity ($n<1$) hold without constraints.
 - **Standard errors**: inverse of the numerical Hessian of $-\log L$ (observed Fisher information).
-- **Hawkes vs Poisson**: likelihood-ratio test against a homogeneous Poisson process.
+- **Hawkes vs Poisson**: likelihood-ratio test against a homogeneous Poisson process ($\chi^2_2$ at 5 % = 5.99).
 - **Goodness of fit**: KS test on the compensator residuals computed with the *estimated* parameters.
 
 ### Results
 
-<!-- Paste here the tables printed by `q mle.q` -->
+Output of `q mle.q` on the first day of the HDB (seed 42):
 
 | sym | N events | $\mu$ (true → est.) | $\alpha$ (true → est.) | $\beta$ (true → est.) | $n$ (true → est.) | LR vs Poisson |
 |---|---|---|---|---|---|---|
-| AAPL | … | 1.0 → … | 40 → … | 50 → … | 0.80 → … | … |
-| … | | | | | | |
+| AAPL | | 1.0 → | 40 → | 50 → | 0.80 → | |
+| MSFT | | 0.8 → | 35 → | 50 → | 0.70 → | |
+| GOOG | | 0.5 → | 30 → | 50 → | 0.60 → | |
+| AMZN | | 0.6 → | 35 → | 50 → | 0.70 → | |
+| TSLA | | 1.2 → | 45 → | 50 → | 0.90 → | |
 
-Key takeaway: the parameters are recovered within about one standard error (≈ 1 % relative), and the 1 ms timestamp quantisation introduces no visible bias even though the excitation memory is only 20 ms.
+<!-- Fill in from the `res` and `z` tables printed by `q mle.q`. -->
 
 ---
 
@@ -183,4 +141,3 @@ q feed.q 60                     # replay one session at x60 (6h30 in 6 min 30 s)
 ## Tech
 
 `kdb+/q` · `kdb+tick` · `.Q.dpft` partitioned HDB · `aj` as-of join · point processes · maximum likelihood · Nelder–Mead
-
