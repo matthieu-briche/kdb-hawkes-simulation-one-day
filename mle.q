@@ -74,7 +74,7 @@ d0:first date
 
 fit:{[s]
   t0:.z.p;
-  t:1e-9*"j"$exec time-0D09:30:00 from quote where date=d0,sym=s;   / secondes depuis l'ouverture
+  t:1e-9*"j"$(exec time from select time from quote where date=d0,sym=s)-0D09:30:00;   / secondes depuis l'ouverture (select puis exec : KDB-X ne gere pas exec calcule sur table partitionnee)
   N:count t;
   -1"  ",string[s]," : N=",string[N]," evenements ...";
   x0:(log 0.5*N%T;0f;log 10f);                                   / depart volontairement loin
