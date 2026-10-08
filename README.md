@@ -1,48 +1,3 @@
-# kdb-proj-hft
-High-Frequency Market Microstructure &amp; Orderbook Engine (L2/L3) in KDB+/q
-Un projet end-to-end de simulation de marché et d'analytics de microstructure temporelle en temps réel et historique
-
-Architecture du projet (Sur ton GitHub)Feedhandler C++/Python (PyKX) :
-
-Un simulateur/rejoueur de flux L2/L3 (p. ex. rejouer des données ITCH/OUCH ou L2 de Binance/Crypto via WebSockets ou de données historiques NASDAQ).   
-
-Real-Time Orderbook Engine (.q) :Reconstruction in-memory du carnet d'ordres jusqu'au niveau 10 (Depth of Book) à partir des événements de type Add, Cancel, Execute.Maintien dynamique de l'état du carnet et calcul d'indicateurs de microstructure à haute fréquence à chaque tick :Orderbook Imbalance (déséquilibre bid/ask pondéré par la profondeur).Micro-price & Mid-price Drift.Effective & Realized Spread.
-
-Stream Analytics & Feature Store (RTE - Real-Time Engine) :Agrégation temps réel avec aj / asof joins et fenêtres glissantes (xbar).   Moteur de détection d'anomalies / signaux : détection de Spoofing / Large Trades ou de Toxic Flow (VPIN - Volume-Synchronized Probability of Toxicity).
-
-Storage & Optimisation HDB :Partitionnement par date/heure, compression ZSTD, utilisation stratégique des attributs (`p#, `s#).   Script de post-traitement EOD (End Of Day) sous PyKX/q.   
-
-API & Dashboard (Python / PyKX Gateway) :Une Gateway Python/FastAPI interrogeant kdb+ via PyKX pour exposer des endpoints REST / WebSockets vers un dashboard léger (Streamlit ou Plotly) affichant le carnet d'ordres animé et les métriques de risque/PnL. 
-
-hft-microstructure-kdb/
-├── docker-compose.yml
-├── README.md                 <-- Schéma d'architecture + explication des métriques quant
-├── src/
-│   ├── feedhandler/          <-- Python/PyKX rejoueur de flux (L2/L3)
-│   ├── q/
-│   │   ├── tp.q              <-- Tickerplant
-│   │   ├── orderbook.q       <-- Engine Carnet d'ordres & Microstructure
-│   │   ├── rdb.q             <-- Real-time DB
-│   │   ├── hdb.q             <-- Historical DB
-│   │   └── analytics.q       <-- Micro-price, VPIN, Spreads, VPWA
-│   └── gateway/              <-- API PyKX / FastAPI
-└── tests/                    <-- Unit tests (q / pytest)
-
-pipeline complet:
-
-Modélisation : un processus de Hawkes exponentiel simulé par représentation en grappes (immigrants + descendance), vectorisé en q. Ça montre que tu comprends le modèle, pas seulement que tu appliques une formule.
-Validation statistique rigoureuse : le compensateur ramené à une Exp(1) (théorème de changement de temps), un test KS, l'autocorrélation et le facteur de Fano comparé à la valeur théorique 1/(1−n)². C'est le point le plus différenciant, car beaucoup simulent sans vérifier.
-Stockage kdb+ standard : une HDB partitionnée par date via .Q.dpft, avec l'attribut p# sur sym et un schéma conforme à kdb+tick.
-Analyse : une grille as-of à la milliseconde avec aj.
-Temps réel : un feed qui rejoue la journée en accéléré vers un tickerplant (.u.upd).
-
-
-
-
-En anglais : 
-
-
-
 # Hawkes Quote Simulator — kdb+/q
 
 End-to-end simulation of an intraday bid/ask quote stream driven by **self-exciting Hawkes processes**, built entirely in **kdb+/q**: simulation, statistical validation, partitioned historical database, as-of analytics, real-time replay through a tickerplant, and **maximum-likelihood recovery of the model parameters**.
@@ -183,4 +138,3 @@ q feed.q 60                     # replay one session at x60 (6h30 in 6 min 30 s)
 ## Tech
 
 `kdb+/q` · `kdb+tick` · `.Q.dpft` partitioned HDB · `aj` as-of join · point processes · maximum likelihood · Nelder–Mead
-
