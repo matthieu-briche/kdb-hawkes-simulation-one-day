@@ -2,7 +2,7 @@
 / Estimation par maximum de vraisemblance (MLE) des parametres Hawkes
 / (mu, alpha, beta) a partir des quotes stockees dans la HDB "hdbq"
 / Lancement : q mle.q   (apres q hawkes_quotes.q, qui cree hdbq)
-/
+/ ---
 / Vraisemblance du Hawkes exponentiel sur [0,T] :
 /   log L = sum_i log(mu + alpha*A_i) - mu*T - (alpha/beta)*sum_i (1-exp(-beta(T-t_i)))
 /   A_1 = 0 ;  A_i = exp(-beta(t_i - t_{i-1})) * (1 + A_{i-1})     (recursion O(n))
