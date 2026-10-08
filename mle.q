@@ -2,7 +2,7 @@
 / Estimation par maximum de vraisemblance (MLE) des parametres Hawkes
 / (mu, alpha, beta) a partir des quotes stockees dans la HDB "hdbq"
 / Lancement : q mle.q   (apres q hawkes_quotes.q, qui cree hdbq)
-/
+/ ---
 / Vraisemblance du Hawkes exponentiel sur [0,T] :
 /   log L = sum_i log(mu + alpha*A_i) - mu*T - (alpha/beta)*sum_i (1-exp(-beta(T-t_i)))
 /   A_1 = 0 ;  A_i = exp(-beta(t_i - t_{i-1})) * (1 + A_{i-1})     (recursion O(n))
@@ -74,7 +74,7 @@ d0:first date
 
 fit:{[s]
   t0:.z.p;
-  t:1e-9*"j"$exec time-0D09:30:00 from quote where date=d0,sym=s;   / secondes depuis l'ouverture
+  t:1e-9*"j"$(exec time from select time from quote where date=d0,sym=s)-0D09:30:00;   / secondes depuis l'ouverture (select puis exec : KDB-X ne gere pas exec calcule sur table partitionnee)
   N:count t;
   -1"  ",string[s]," : N=",string[N]," evenements ...";
   x0:(log 0.5*N%T;0f;log 10f);                                   / depart volontairement loin
