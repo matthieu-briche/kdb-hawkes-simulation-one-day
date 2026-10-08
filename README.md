@@ -95,17 +95,22 @@ $$
 
 ### Results
 
-Output of `q mle.q` on the first day of the HDB (seed 42):
+Output of `q mle.q` on the first day of the HDB (seed 42), estimates ± standard error:
 
 | sym | N events | $\mu$ (true → est.) | $\alpha$ (true → est.) | $\beta$ (true → est.) | $n$ (true → est.) | LR vs Poisson |
 |---|---|---|---|---|---|---|
-| AAPL | | 1.0 → | 40 → | 50 → | 0.80 → | |
-| MSFT | | 0.8 → | 35 → | 50 → | 0.70 → | |
-| GOOG | | 0.5 → | 30 → | 50 → | 0.60 → | |
-| AMZN | | 0.6 → | 35 → | 50 → | 0.70 → | |
-| TSLA | | 1.2 → | 45 → | 50 → | 0.90 → | |
+| AAPL | 116,468 | 1.0 → 0.994 ± 0.007 | 40 → 39.98 ± 0.24 | 50 → 49.97 ± 0.27 | 0.80 → 0.800 | 432,522 |
+| MSFT | 63,648 | 0.8 → 0.804 ± 0.006 | 35 → 34.93 ± 0.28 | 50 → 49.60 ± 0.34 | 0.70 → 0.704 | 207,804 |
+| GOOG | 28,933 | 0.5 → 0.499 ± 0.005 | 30 → 29.74 ± 0.37 | 50 → 49.87 ± 0.51 | 0.60 → 0.596 | 88,088 |
+| AMZN | 47,911 | 0.6 → 0.603 ± 0.005 | 35 → 35.35 ± 0.33 | 50 → 50.11 ± 0.39 | 0.70 → 0.705 | 174,603 |
+| TSLA | 275,796 | 1.2 → 1.195 ± 0.008 | 45 → 44.84 ± 0.20 | 50 → 49.90 ± 0.20 | 0.90 → 0.899 | 1,142,515 |
 
-<!-- Fill in from the `res` and `z` tables printed by `q mle.q`. -->
+Nelder–Mead converges in 53 to 63 iterations, from 0 to 10 seconds per symbol.
+
+- **Parameters are recovered**: every standardised error (estimate − truth) / SE stays below 1.2 in absolute value.
+- **Self-excitation is overwhelming**: the likelihood ratio against a homogeneous Poisson process is in the hundreds of thousands, against a 5 % critical value of 5.99 for $\chi^2_2$.
+- **The residual KS test rejects for all five symbols, and that is informative.** At 1 ms resolution, many events share a timestamp with the previous one (about 30,000 ties for TSLA, 11 % of its events; 2.5 % for GOOG). Each tie gives a compensator increment of exactly 0, so the empirical CDF of the residuals jumps at 0 by the share of ties, while Exp(1) has no mass there: the KS statistic is at least that share, far above the critical value (0.003 to 0.008 here). On the continuous simulated times (`hawkes_quotes.q`) the statistics stay close to the threshold. Timestamp quantisation leaves the parameter estimates unbiased, but with a 20 ms memory, 1 ms is too coarse for residual-based goodness-of-fit tests; spreading ties uniformly within their millisecond before testing would be the natural fix.
+
 
 ---
 
