@@ -146,3 +146,13 @@ q feed.q 60                     # replay one session at x60 (6h30 in 6 min 30 s)
 ## Tech
 
 `kdb+/q` · `kdb+tick` · `.Q.dpft` partitioned HDB · `aj` as-of join · point processes · maximum likelihood · Nelder–Mead
+
+---
+
+<p align="center">
+  <a href="https://github.com/matthieu-briche">
+    <img src="assets/logo.png" alt="Matthieu Briche" width="37">
+  </a>
+  <br>
+  <sub>Matthieu Briche · <a href="https://github.com/matthieu-briche">github.com/matthieu-briche</a></sub>
+</p>
