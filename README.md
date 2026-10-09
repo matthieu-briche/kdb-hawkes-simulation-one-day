@@ -72,7 +72,7 @@ A simulator is only useful if it is checked. `hawkes_quotes.q` runs four tests p
 
 - **Time-rescaling theorem**: the compensator increments $\Lambda(t_i) - \Lambda(t_{i-1})$ must be i.i.d. Exp(1). Checked with the mean, the variance and a **Kolmogorov–Smirnov test**.
 - **Independence**: lag-1 autocorrelation of these increments ≈ 0.
-- **Clustering**: the Fano factor (variance/mean of counts over 10 s windows) must be ≫ 1 and approach the theoretical value $1/(1-n)^2$, versus 1 for a Poisson process.
+- **Clustering**: the Fano factor (variance/mean of counts over 10 s windows) must be ≫ 1 and approach the theoretical value $1/(1-n)^2$, versus 1 for a Poisson process. See [docs/fano-factor.md](docs/fano-factor.md) for the derivation and the finite-window correction.
 - **Data integrity**: strictly non-decreasing timestamps per symbol before writing to disk, and type checks on reload.
 
 ---
