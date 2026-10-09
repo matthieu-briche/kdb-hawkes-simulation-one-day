@@ -88,7 +88,7 @@ $$
 \qquad A_i = e^{-\beta (t_i - t_{i-1})}(1 + A_{i-1})
 $$
 
-- **Optimiser**: a Nelder–Mead simplex written in q, run on $(\log\mu,\ \\mathrm{logit} n,\ \log\beta)$ so that positivity and stationarity ($n<1$) hold without constraints.
+- **Optimiser**: a Nelder–Mead simplex written in q, run on $(\log\mu,\ \mathrm{logit} n,\ \log\beta)$ so that positivity and stationarity ($n<1$) hold without constraints.
 - **Standard errors**: inverse of the numerical Hessian of $-\log L$ (observed Fisher information).
 - **Hawkes vs Poisson**: likelihood-ratio test against a homogeneous Poisson process ($\chi^2_2$ at 5 % = 5.99).
 - **Goodness of fit**: KS test on the compensator residuals computed with the *estimated* parameters.
