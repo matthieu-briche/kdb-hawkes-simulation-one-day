@@ -1,37 +1,40 @@
 / =====================================================================
-/ Estimation par maximum de vraisemblance (MLE) des parametres Hawkes
-/ (mu, alpha, beta) a partir des quotes stockees dans la HDB "hdbq"
-/ Lancement : q mle.q   (apres q hawkes_quotes.q, qui cree hdbq)
+/ Maximum-likelihood estimation (MLE) of the Hawkes parameters
+/ (mu, alpha, beta) from the quotes stored in the "hdbq" HDB,
+/ on every (day, symbol) pair: 10 days x 5 symbols = 50 fits.
+/ Usage: q mle.q   (after q hawkes_quotes.q, which creates hdbq)
 / ---
-/ Vraisemblance du Hawkes exponentiel sur [0,T] :
+/ Exponential Hawkes log-likelihood on [0,T]:
 /   log L = sum_i log(mu + alpha*A_i) - mu*T - (alpha/beta)*sum_i (1-exp(-beta(T-t_i)))
-/   A_1 = 0 ;  A_i = exp(-beta(t_i - t_{i-1})) * (1 + A_{i-1})     (recursion O(n))
-/ Optimisation : Nelder-Mead sur x = (log mu ; logit n ; log beta), n = alpha/beta
-/   -> mu>0, beta>0 et 0<n<1 (stationnarite) garantis sans contrainte.
-/ Erreurs-types : inverse de la Hessienne numerique de -log L (information observee).
+/   A_1 = 0 ;  A_i = exp(-beta(t_i - t_{i-1})) * (1 + A_{i-1})     (O(n) recursion)
+/ Optimisation: Nelder-Mead on x = (log mu ; logit n ; log beta), n = alpha/beta
+/   -> mu>0, beta>0 and 0<n<1 (stationarity) hold without constraints.
+/ Standard errors: inverse of the numerical Hessian of -log L (observed information).
 / =====================================================================
 
--1"Chargement de mle.q ...";
+\S 42                                                            / seed for the tie jitter only
+\l lib/hawkes.q
+-1"Loading mle.q ...";
 
-/ ---------- vraisemblance ----------
+/ ---------- likelihood ----------
 logL:{[t;T;mu;al;be]
   e:exp neg[be]*1_deltas t;
   A:0f,{y*1+x}\[0f;e];
   sum[log mu+al*A]-(mu*T)+(al%be)*sum 1-exp neg[be]*T-t}
 
 toNat:{[x] be:exp x 2; n:1%1+exp neg x 1; (exp x 0;n*be;be)}   / x -> (mu;alpha;beta)
-nllX:{[t;T;x] neg logL[t;T] . toNat x}                          / objectif a minimiser
-nllP:{[t;T;p] neg logL[t;T] . p}                                / idem, parametres naturels
+nllX:{[t;T;x] neg logL[t;T] . toNat x}                          / objective to minimise
+nllP:{[t;T;p] neg logL[t;T] . p}                                / same, natural parameters
 
-/ ---------- Nelder-Mead (reflexion / expansion / contraction / retrecissement) ----------
-/ critere d'arret RELATIF : (pire - meilleur) < tol * (1 + |meilleur|)
+/ ---------- Nelder-Mead (reflection / expansion / contraction / shrink) ----------
+/ RELATIVE stopping rule: (worst - best) < tol * (1 + |best|)
 nelderMead:{[f;x0;tol;maxit]
   n:count x0;
-  S:(enlist x0),x0+/:0.5*{x=/:x}til n;                          / simplexe initial
+  S:(enlist x0),x0+/:0.5*{x=/:x}til n;                          / initial simplex
   F:f each S;
   i:iasc F; S:S i; F:F i; it:0;
   while[(it<maxit)&(tol*1+abs first F)<(last F)-first F;
-    c:avg -1_S;                                                 / centroide hors pire point
+    c:avg -1_S;                                                 / centroid without the worst point
     xr:c+c-last S; fr:f xr;
     $[fr<first F;
         [xe:c+2*xr-c; fe:f xe; $[fe<fr; [S[n]:xe; F[n]:fe]; [S[n]:xr; F[n]:fr]]];
@@ -41,11 +44,10 @@ nelderMead:{[f;x0;tol;maxit]
        $[fc<fr&last F;
           [S[n]:xc; F[n]:fc];
           [S:first[S]+/:0.5*S-\:first S; F:f each S]]]];
-    i:iasc F; S:S i; F:F i; it+:1;
-    if[0=it mod 50; -1"      it=",string[it],"  -logL=",string first F]];
+    i:iasc F; S:S i; F:F i; it+:1];
   `x`f`iter!(first S;first F;it)}
 
-/ ---------- Hessienne numerique (differences centrees) ----------
+/ ---------- numerical Hessian (central differences) ----------
 hess:{[f;p]
   n:count p;
   E:(1e-4*abs p)*{x=/:x}til n;
@@ -54,47 +56,56 @@ hess:{[f;p]
     (a+d-b+c)%4*E[i;i]*E[j;j]};
   {[gg;k;i] gg[i] each k}[g[f;p;E];til n] each til n}
 
-/ ---------- adequation : residus du compensateur (doivent etre Exp(1)) ----------
-comp:{[t;mu;al;be] d:deltas t; e:exp neg[be]*d; S:{1+x*y}\[0f;e];
-  (mu*d)+(al%be)*(1-e)*0f,-1_S}
-ksStat:{s:asc x; n:count s; F:1-exp neg s; i:1+til n;
-  max[(i%n)-F] | max F-(i-1)%n}
-
-/ ---------- vrais parametres (identiques a hawkes_quotes.q) ----------
-par:([sym:`AAPL`MSFT`GOOG`AMZN`TSLA]
-  mu:   1.0 0.8 0.5 0.6 1.2;
-  alpha:40  35  30  35  45f;
-  beta: 50  50  50  50  50f)
-T:23400f
-
-/ ---------- estimation sur un jour de la HDB ----------
+/ ---------- estimation on every (day, symbol) of the HDB ----------
 system"l hdbq";
-d0:first date
--1"== MLE Hawkes sur la HDB, date ",string[d0]," ==";
+-1"== Hawkes MLE on the HDB: ",string[count date]," days x ",string[count par]," symbols ==";
 
-fit:{[s]
+fit:{[d;s]
   t0:.z.p;
-  t:1e-9*"j"$(exec time from select time from quote where date=d0,sym=s)-0D09:30:00;   / secondes depuis l'ouverture (select puis exec : KDB-X ne gere pas exec calcule sur table partitionnee)
+  t:1e-9*"j"$(exec time from select time from quote where date=d,sym=s)-sessOpen;   / seconds since the open (select then exec: KDB-X does not support a computed exec on a partitioned table)
   N:count t;
-  -1"  ",string[s]," : N=",string[N]," evenements ...";
-  x0:(log 0.5*N%T;0f;log 10f);                                   / depart volontairement loin
+  x0:(log 0.5*N%T;0f;log 10f);                                   / deliberately far start
   r:nelderMead[nllX[t;T];x0;1e-9;1000];
-  -1"    -> ",string[r`iter]," iterations, ",string[`second$.z.p-t0]," (hh:mm:ss)";
   p:toNat r`x;
   se:sqrt {x[y;y]}[inv hess[nllP[t;T];p]] each til 3;
-  lr:2*neg[r`f]-(N*log N%T)-N;                                   / LR vs Poisson homogene
-  ks:ksStat comp[t] . p;
+  lr:2*neg[r`f]-(N*log N%T)-N;                                   / LR vs homogeneous Poisson
+  ks:ksStat comp[t] . p;                                         / residuals on the 1 ms times
+  tj:asc T&0|t+0.001*-0.5+N?1f;                                  / each event spread uniformly within its ms
+  ksj:ksStat comp[tj] . p;                                       / residuals on the de-quantised times
+  -1"  ",string[d]," ",string[s],": N=",string[N],", ",string[r`iter]," iterations, ",string[`second$.z.p-t0]," (hh:mm:ss)";
   tr:par s;
-  `sym`N`iter`mu`muHat`muSE`alpha`alphaHat`alphaSE`beta`betaHat`betaSE`n`nHat`LRvsPoisson`KS`KS5pct!
-   (s;N;r`iter;tr`mu;p 0;se 0;tr`alpha;p 1;se 1;tr`beta;p 2;se 2;tr[`alpha]%tr`beta;p[1]%p 2;lr;ks;1.358%sqrt N)}
+  `date`sym`N`iter`mu`muHat`muSE`alpha`alphaHat`alphaSE`beta`betaHat`betaSE`n`nHat`LRvsPoisson`KS`KSjit`KS5pct!
+   (d;s;N;r`iter;tr`mu;p 0;se 0;tr`alpha;p 1;se 1;tr`beta;p 2;se 2;tr[`alpha]%tr`beta;p[1]%p 2;lr;ks;ksj;1.358%sqrt N)}
 
-res:fit each exec sym from par
--1"";
-show res;
-
-/ ---------- resume ----------
+res:raze {[d] fit[d] each exec sym from par} each date
 z:update zMu:(muHat-mu)%muSE, zAlpha:(alphaHat-alpha)%alphaSE, zBeta:(betaHat-beta)%betaSE from res
--1"\n== ecarts standardises (vrai - estime)/SE : attendu |z| < ~2 ==";
-show select sym,zMu,zAlpha,zBeta from z;
--1"LR vs Poisson : chi2(2) a 5% = 5.99 -> l'auto-excitation est ",$[all res[`LRvsPoisson]>5.99;"significative pour tous";"NON significative pour certains"];
--1"KS sur residus avec parametres estimes : ok pour ",string[sum res[`KS]<res`KS5pct],"/",string count res;
+
+/ ---------- first day ----------
+d0:first date
+-1"\n== first day (",string[d0],") ==";
+show delete date from select from z where date=d0;
+-1"\nmarkdown:";
+-1 mdTable select sym,N,iter,muHat,muSE,alphaHat,alphaSE,betaHat,betaSE,nHat,LRvsPoisson,KS,KSjit,KS5pct from z where date=d0;
+
+/ ---------- all days: is the estimator unbiased, are the SEs right? ----------
+/ if both hold, z = (estimate - truth)/SE ~ N(0,1): mean ~ 0, sd ~ 1, and the
+/ 95% interval estimate +/- 1.96 SE contains the truth ~95% of the time.
+cover:{avg 1.96>abs x}
+-1"\n== all days: standardised errors z = (estimate - truth)/SE, expected mean ~0, sd ~1 ==";
+summ:select days:count i,
+  zMuMean:avg zMu, zMuSD:dev zMu, zAlphaMean:avg zAlpha, zAlphaSD:dev zAlpha, zBetaMean:avg zBeta, zBetaSD:dev zBeta,
+  cov95Mu:cover zMu, cov95Alpha:cover zAlpha, cov95Beta:cover zBeta,
+  KSpass:sum KS<KS5pct, KSjitPass:sum KSjit<KS5pct by sym from z
+show summ;
+pool:select fits:count i, zMuMean:avg zMu, zAlphaMean:avg zAlpha, zBetaMean:avg zBeta,
+  cov95Mu:cover zMu, cov95Alpha:cover zAlpha, cov95Beta:cover zBeta,
+  KSpass:sum KS<KS5pct, KSjitPass:sum KSjit<KS5pct from z
+-1"pooled over all fits:";
+show pool;
+-1"\nmarkdown:";
+-1 mdTable summ;
+-1 mdTable pool;
+
+/ ---------- verdict ----------
+-1"\nLR vs Poisson, chi2(2) 5% value 5.99 (indicative only: under H0 beta is not identified, see README) -> self-excitation ",$[all res[`LRvsPoisson]>5.99;"significant in every fit";"NOT significant in some fits"];
+-1"KS on residuals, estimated parameters: 1 ms times pass ",string[sum res[`KS]<res`KS5pct],"/",string[count res],", de-quantised times pass ",string[sum res[`KSjit]<res`KS5pct],"/",string count res;
