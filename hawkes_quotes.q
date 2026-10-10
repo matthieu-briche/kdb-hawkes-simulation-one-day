@@ -17,16 +17,16 @@ checkHawkes:{[s]
   inc:comp[tk;mu;al;be];                                   / must be i.i.d. Exp(1)
   w:10f;
   c:deltas 1+tk bin w*1+til floor T%w;                     / counts per 10 s window
-  `sym`ticks`expected`mean`var`KS`KS5pct`acf1`fano`fanoTheo!(s;count tk;floor mu*T%1-al%be;avg inc;var inc;ksStat inc;1.358%sqrt count inc;acf[inc;1];(var c)%avg c;1%(1-al%be)xexp 2)}
+  `sym`ticks`expected`mean`variance`KS`KS5pct`acf1`fano`fanoTheo!(s;count tk;floor mu*T%1-al%be;avg inc;var inc;ksStat inc;1.358%sqrt count inc;acf[inc;1];(var c)%avg c;1%(1-al%be)xexp 2)}
 
 -1"== Hawkes checks (one simulation per symbol) ==";
 checks:checkHawkes each exec sym from par
 show checks;
--1"expected: mean~1, var~1, KS<KS5pct, |acf1|<~0.02, fano>>1 (~fanoTheo, slightly below: see docs/fano-factor.md)";
+-1"expected: mean~1, variance~1, KS<KS5pct, |acf1|<~0.02, fano>>1 (~fanoTheo, slightly below: see docs/fano-factor.md)";
 -1"KS passes for ",string[sum checks[`KS]<checks`KS5pct],"/",string[count checks]," symbols (5 tests at 5%: an isolated failure is normal)";
 -1"";
 -1"markdown:";
--1 mdTable select sym,ticks,mean,var,KS,KS5pct,acf1,fano,fanoTheo from checks;
+-1 mdTable select sym,ticks,mean,variance,KS,KS5pct,acf1,fano,fanoTheo from checks;
 
 / ---------- multi-day generation and HDB write ----------
 system"rm -rf hdbq";                                       / start from a clean database
