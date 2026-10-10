@@ -105,7 +105,7 @@ $$
 
 ### Results
 
-Output of `q mle.q` on the first day of the HDB (2024.01.02, seed 42), estimates ± standard error:
+From the output of `q mle.q` on the first day of the HDB (2024.01.02, seed 42), estimates ± standard error:
 
 | sym | N events | $\mu$ (true → est.) | $\alpha$ (true → est.) | $\beta$ (true → est.) | $n$ (true → est.) | LR vs Poisson |
 |---|---|---|---|---|---|---|
@@ -115,14 +115,26 @@ Output of `q mle.q` on the first day of the HDB (2024.01.02, seed 42), estimates
 | AMZN | 47,911 | 0.6 → 0.603 ± 0.005 | 35 → 35.35 ± 0.33 | 50 → 50.11 ± 0.39 | 0.70 → 0.705 | 174,603 |
 | TSLA | 275,796 | 1.2 → 1.195 ± 0.008 | 45 → 44.84 ± 0.20 | 50 → 49.90 ± 0.20 | 0.90 → 0.899 | 1,142,515 |
 
-Nelder–Mead converges in 53 to 63 iterations, in under 10 seconds per symbol.
+Over the 50 fits, Nelder–Mead converges in 50 to 70 iterations, in 1 to 7 seconds per fit except TSLA (13 to 16 s, the largest sample); the full `q mle.q` run takes about 4½ minutes on a laptop.
 
 - **Parameters are recovered on this day**: every standardised error (estimate − truth) / SE stays below 1.2 in absolute value. One day per symbol is a single draw, so it cannot by itself show that the estimator is unbiased or that the standard errors are right.
-- **Hence the multi-day check.** `mle.q` fits all 50 (day, symbol) pairs and reports, per symbol and pooled, the mean and standard deviation of the standardised errors (expected ≈ 0 and ≈ 1) and the coverage of the 95 % intervals estimate ± 1.96 SE (expected ≈ 95 %). This is where a bias from the 1 ms rounding, or an underestimated SE, would show up. The full run takes a few minutes.
-<!-- results: paste the "all days" markdown tables printed by `q mle.q` here -->
+- **Hence the multi-day check.** `mle.q` fits all 50 (day, symbol) pairs and reports, per symbol and pooled, the mean and standard deviation of the standardised errors (expected ≈ 0 and ≈ 1) and the coverage of the 95 % intervals estimate ± 1.96 SE (expected ≈ 95 %). This is where a bias from the 1 ms rounding, or an underestimated SE, would show up.
+
+  Standardised errors $z$ = (estimate − truth) / SE over the 10 days, mean / sd, and coverage of the 95 % intervals:
+
+  | sym | $z_\mu$ | $z_\alpha$ | $z_\beta$ | coverage $\mu$ / $\alpha$ / $\beta$ |
+  |---|---|---|---|---|
+  | AAPL | 0.23 / 0.69 | 0.14 / 0.69 | 0.33 / 0.81 | 100 / 100 / 100 % |
+  | MSFT | 0.48 / 0.95 | −0.16 / 0.74 | 0.04 / 0.94 | 90 / 100 / 90 % |
+  | GOOG | −0.12 / 1.17 | 0.37 / 0.76 | 0.64 / 0.80 | 90 / 100 / 90 % |
+  | AMZN | −0.06 / 0.74 | 0.13 / 0.87 | 0.00 / 1.03 | 100 / 100 / 100 % |
+  | TSLA | 0.44 / 1.17 | 0.60 / 1.21 | 0.50 / 1.32 | 90 / 80 / 80 % |
+  | **pooled (50 fits)** | **0.20** | **0.22** | **0.30** | **94 / 96 / 92 %** |
+
+  Pooled coverage is close to 95 % and the per-symbol spreads lie between 0.7 and 1.3. The mean errors are all slightly positive: with 50 fits a pooled mean has a standard error of about 0.14, so only $\beta$ (0.30, about 2 SE) stands out, and the three estimates are correlated within a fit, so these are not three independent signals. TSLA, with the most 1 ms ties (11 % of its events), has the widest spread (sd 1.2–1.3) and the lowest coverage, which is consistent with a small effect of the rounding on the estimates, though not proof of it. Ten days per symbol remain few: one missed interval moves a symbol's coverage by 10 points.
 - **Self-excitation is overwhelming**: the likelihood ratio against a homogeneous Poisson process is in the hundreds of thousands. The usual $\chi^2_2$ reference (5.99 at 5 %) is only indicative here: under the Poisson null $\alpha = 0$ sits on the boundary of the parameter space and $\beta$ is not identified, so Wilks' theorem does not strictly apply (Davies' problem). At these magnitudes the conclusion does not depend on it.
-- **On the stored 1 ms times, the residual KS test rejects for all five symbols, and that is informative.** Many events share a timestamp with the previous one (about 30,000 ties for TSLA, 11 % of its events; 2.5 % for GOOG). Each tie gives a compensator increment of exactly 0, so the empirical CDF of the residuals jumps at 0 by the share of ties, while Exp(1) has no mass there: the KS statistic is at least that share, far above the critical value (0.003 to 0.008 here).
-- **Spreading each event uniformly within its millisecond removes the artefact.** `mle.q` reports this second statistic as `KSjit`, computed with the same estimated parameters. With a 20 ms memory, 1 ms is too coarse for residual tests on the raw stamps, but not once the rounding is undone.
+- **On the stored 1 ms times, the residual KS test rejects for all five symbols, and that is informative.** Many events share a timestamp with the previous one (about 30,000 ties for TSLA, 11 % of its events; 2.5 % for GOOG). Each tie gives a compensator increment of exactly 0, so the empirical CDF of the residuals jumps at 0 by the share of ties, while Exp(1) has no mass there: the KS statistic is at least that share (0.025 for GOOG to 0.108 for TSLA on the first day), far above the critical value (0.003 to 0.008 here). It fails in all 50 fits.
+- **Spreading each event uniformly within its millisecond removes the artefact.** `mle.q` reports this second statistic as `KSjit`, computed with the same estimated parameters: it passes in all 50 fits. With a 20 ms memory, 1 ms is too coarse for residual tests on the raw stamps, but not once the rounding is undone.
 
 <p align="center"><img src="assets/residuals_cdf.png" alt="Empirical CDF of the compensator residuals near 0 for continuous, rounded and de-quantised times" width="600"></p>
 
