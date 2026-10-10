@@ -38,17 +38,21 @@ Stationary mean rate: $\mu / (1-n)$, i.e. up to ~12 quotes/s on average for TSLA
                                                                    └──► aj : bid/ask on a 1 ms grid
    feed.q                     tick.q (port 5010)            r.q
    ┌──────────────┐  .u.upd   ┌──────────────┐  publish   ┌──────────┐
-   │ accelerated  │──────────►│  tickerplant │───────────►│   RDB    │
+   │ HDB day,     │──────────►│  tickerplant │───────────►│   RDB    │
    │ replay (x60) │           │  schema sym.q│            │          │
    └──────────────┘           └──────────────┘            └──────────┘
+
+   lib/hawkes.q: parameters, simulator, residual tests, shared by all scripts
 ```
 
 | File | Role |
 |---|---|
+| [`lib/hawkes.q`](lib/hawkes.q) | single source for the true parameters, the simulator and the residual tests |
 | [`hawkes_quotes.q`](hawkes_quotes.q) | simulation, statistical checks, writes a 10-day partitioned HDB, 1 ms as-of grid |
-| [`mle.q`](mle.q) | maximum-likelihood estimation of $(\mu,\alpha,\beta)$ from the HDB, standard errors, goodness of fit |
-| [`feed.q`](feed.q) | replays a simulated session into a tickerplant in accelerated time |
+| [`mle.q`](mle.q) | maximum-likelihood estimation of $(\mu,\alpha,\beta)$ on every day of the HDB, standard errors, coverage, goodness of fit |
+| [`feed.q`](feed.q) | replays one stored HDB day into a tickerplant in accelerated time |
 | [`sym.q`](sym.q) | kdb+tick schema for the `quote` table |
+| [`docs/figures.py`](docs/figures.py) | Python port of the simulator that draws the two figures below |
 
 ---
 
@@ -62,7 +66,7 @@ Instead of the classic thinning algorithm (sequential, one event at a time), the
 
 Each generation is processed as a whole vector: no per-event loop.
 
-Prices follow a geometric random walk on the event clock, in integer cents, with a 1–3 cent spread. Timestamps are stored as `timespan` at **1 ms resolution**, partitioned by date with the `p#` attribute on `sym` (standard kdb+tick layout, written with `.Q.dpft`). The random seed is fixed (`\S 42`) so every run is reproducible.
+Prices follow a geometric random walk on the event clock, in integer cents, with a 1–3 cent spread placed around the mid. Timestamps are stored as `timespan` at **1 ms resolution**, partitioned by date with the `p#` attribute on `sym` (standard kdb+tick layout, written with `.Q.dpft`). The HDB holds the first 10 NYSE trading days of 2024 (weekends, New Year's Day and MLK Day excluded). The random seed is fixed (`\S 42`) so every run is reproducible.
 
 ---
 
@@ -73,7 +77,13 @@ A simulator is only useful if it is checked. `hawkes_quotes.q` runs four tests p
 - **Time-rescaling theorem**: the compensator increments $\Lambda(t_i) - \Lambda(t_{i-1})$ must be i.i.d. Exp(1). Checked with the mean, the variance and a **Kolmogorov–Smirnov test**.
 - **Independence**: lag-1 autocorrelation of these increments ≈ 0.
 - **Clustering**: the Fano factor (variance/mean of counts over 10 s windows) must be ≫ 1 and approach the theoretical value $1/(1-n)^2$, versus 1 for a Poisson process. See [docs/fano-factor.md](docs/fano-factor.md) for the derivation and the finite-window correction.
-- **Data integrity**: strictly non-decreasing timestamps per symbol before writing to disk, and type checks on reload.
+
+<p align="center"><img src="assets/fano.png" alt="Fano factor against window length: simulation versus theory" width="640"></p>
+
+The curve is the exact finite-window formula; the dots come from a $2 \times 10^5$ s simulation (Python port, same algorithm). At short windows the process looks Poisson ($F \approx 1$); beyond $1/(\beta(1-n))$ it reaches the plateau, which identifies $n$.
+- **Data integrity**: non-decreasing timestamps per symbol before writing to disk, and type checks on reload.
+
+The script prints each statistic next to its 5 % critical value, plus a markdown version of the table.
 
 ---
 
@@ -95,7 +105,7 @@ $$
 
 ### Results
 
-Output of `q mle.q` on the first day of the HDB (seed 42), estimates ± standard error:
+Output of `q mle.q` on the first day of the HDB (2024.01.02, seed 42), estimates ± standard error:
 
 | sym | N events | $\mu$ (true → est.) | $\alpha$ (true → est.) | $\beta$ (true → est.) | $n$ (true → est.) | LR vs Poisson |
 |---|---|---|---|---|---|---|
@@ -105,25 +115,35 @@ Output of `q mle.q` on the first day of the HDB (seed 42), estimates ± standard
 | AMZN | 47,911 | 0.6 → 0.603 ± 0.005 | 35 → 35.35 ± 0.33 | 50 → 50.11 ± 0.39 | 0.70 → 0.705 | 174,603 |
 | TSLA | 275,796 | 1.2 → 1.195 ± 0.008 | 45 → 44.84 ± 0.20 | 50 → 49.90 ± 0.20 | 0.90 → 0.899 | 1,142,515 |
 
-Nelder–Mead converges in 53 to 63 iterations, from 0 to 10 seconds per symbol.
+Nelder–Mead converges in 53 to 63 iterations, in under 10 seconds per symbol.
 
-- **Parameters are recovered**: every standardised error (estimate − truth) / SE stays below 1.2 in absolute value.
-- **Self-excitation is overwhelming**: the likelihood ratio against a homogeneous Poisson process is in the hundreds of thousands, against a 5 % critical value of 5.99 for $\chi^2_2$.
-- **The residual KS test rejects for all five symbols, and that is informative.** At 1 ms resolution, many events share a timestamp with the previous one (about 30,000 ties for TSLA, 11 % of its events; 2.5 % for GOOG). Each tie gives a compensator increment of exactly 0, so the empirical CDF of the residuals jumps at 0 by the share of ties, while Exp(1) has no mass there: the KS statistic is at least that share, far above the critical value (0.003 to 0.008 here). On the continuous simulated times (`hawkes_quotes.q`) the statistics stay close to the threshold. Timestamp quantisation leaves the parameter estimates unbiased, but with a 20 ms memory, 1 ms is too coarse for residual-based goodness-of-fit tests; spreading ties uniformly within their millisecond before testing would be the natural fix.
+- **Parameters are recovered on this day**: every standardised error (estimate − truth) / SE stays below 1.2 in absolute value. One day per symbol is a single draw, so it cannot by itself show that the estimator is unbiased or that the standard errors are right.
+- **Hence the multi-day check.** `mle.q` fits all 50 (day, symbol) pairs and reports, per symbol and pooled, the mean and standard deviation of the standardised errors (expected ≈ 0 and ≈ 1) and the coverage of the 95 % intervals estimate ± 1.96 SE (expected ≈ 95 %). This is where a bias from the 1 ms rounding, or an underestimated SE, would show up. The full run takes a few minutes.
+<!-- results: paste the "all days" markdown tables printed by `q mle.q` here -->
+- **Self-excitation is overwhelming**: the likelihood ratio against a homogeneous Poisson process is in the hundreds of thousands. The usual $\chi^2_2$ reference (5.99 at 5 %) is only indicative here: under the Poisson null $\alpha = 0$ sits on the boundary of the parameter space and $\beta$ is not identified, so Wilks' theorem does not strictly apply (Davies' problem). At these magnitudes the conclusion does not depend on it.
+- **On the stored 1 ms times, the residual KS test rejects for all five symbols, and that is informative.** Many events share a timestamp with the previous one (about 30,000 ties for TSLA, 11 % of its events; 2.5 % for GOOG). Each tie gives a compensator increment of exactly 0, so the empirical CDF of the residuals jumps at 0 by the share of ties, while Exp(1) has no mass there: the KS statistic is at least that share, far above the critical value (0.003 to 0.008 here).
+- **Spreading each event uniformly within its millisecond removes the artefact.** `mle.q` reports this second statistic as `KSjit`, computed with the same estimated parameters. With a 20 ms memory, 1 ms is too coarse for residual tests on the raw stamps, but not once the rounding is undone.
+
+<p align="center"><img src="assets/residuals_cdf.png" alt="Empirical CDF of the compensator residuals near 0 for continuous, rounded and de-quantised times" width="600"></p>
+
+Python port, TSLA parameters ($n = 0.9$), true parameters: the KS statistic goes from 0.0008 on continuous times to 0.112 after rounding to 1 ms (the 11 % mass at 0), and back to 0.0010 after spreading, against a 5 % critical value of 0.0026.
 
 
 ---
 
 ## How to run
 
-Requires [kdb+](https://kx.com/kdb-personal-edition-download/) (free personal / community edition).
+Requires [kdb+](https://kx.com/kdb-personal-edition-download/) (free personal / community edition). Run from the repository root.
 
 ```bash
 # 1. simulate, validate, write the HDB (hdbq/) and build the 1 ms grid
 q hawkes_quotes.q
 
-# 2. recover the parameters from the HDB
+# 2. recover the parameters on every day of the HDB
 q mle.q
+
+# optional: redraw the README figures (numpy, matplotlib)
+python docs/figures.py
 ```
 
 Real-time replay with the standard [kdb+tick](https://github.com/KxSystems/kdb-tick) scripts (place `sym.q` in `tick/`):
@@ -131,8 +151,18 @@ Real-time replay with the standard [kdb+tick](https://github.com/KxSystems/kdb-t
 ```bash
 q tick.q sym . -p 5010          # tickerplant
 q tick/r.q :5010 -p 5011        # real-time database
-q feed.q 60                     # replay one session at x60 (6h30 in 6 min 30 s)
+q feed.q 60                     # replay the first HDB day at x60 (6h30 in 6 min 30 s)
+q feed.q 60 2024.01.03          # or a given day
 ```
+
+---
+
+## Limitations
+
+- **Prices carry no information from the order flow**: the mid is a random walk on the event clock, and spreads and sizes are i.i.d. The model is about *when* quotes arrive, not how prices form.
+- **Univariate, stationary intensity**: one process per symbol, no cross-excitation, constant baseline (no intraday U-shape).
+- **Calendar**: only the January 2024 NYSE holidays are encoded, which is enough for the 10 days generated.
+- **Immigrant count**: drawn from the normal approximation to Poisson($\mu T$), negligible for $\mu T \geq 10^4$.
 
 ---
 

@@ -1,2 +1,2 @@
-/ schema kdb+tick : time et sym obligatoirement en 2 premieres colonnes
+/ kdb+tick schema: time and sym must be the first two columns
 quote:([]time:`timespan$();sym:`g#`symbol$();bid:`float$();ask:`float$();bsize:`long$();asize:`long$())
