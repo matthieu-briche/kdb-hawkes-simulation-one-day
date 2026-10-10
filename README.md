@@ -36,22 +36,26 @@ Stationary mean rate: $\mu / (1-n)$, i.e. up to ~12 quotes/s on average for TSLA
                                                               │  quote   │
                                                               └────┬─────┘
                                                                    └──► aj : bid/ask on a 1 ms grid
-   feed.q                     tick.q (port 5010)            r.q
+   feed.q                     tick/tp.q (port 5010)         tick/rdb.q
    ┌──────────────┐  .u.upd   ┌──────────────┐  publish   ┌──────────┐
    │ HDB day,     │──────────►│  tickerplant │───────────►│   RDB    │
    │ replay (x60) │           │  schema sym.q│            │          │
    └──────────────┘           └──────────────┘            └──────────┘
 
    lib/hawkes.q: parameters, simulator, residual tests, shared by all scripts
+   lib/mle.q:    likelihood, Nelder-Mead, Hessian, shared by mle.q and the tests
 ```
 
 | File | Role |
 |---|---|
 | [`lib/hawkes.q`](lib/hawkes.q) | single source for the true parameters, the simulator and the residual tests |
 | [`hawkes_quotes.q`](hawkes_quotes.q) | simulation, statistical checks, writes a 10-day partitioned HDB, 1 ms as-of grid |
+| [`lib/mle.q`](lib/mle.q) | log-likelihood, Nelder–Mead simplex and numerical Hessian, as pure functions |
 | [`mle.q`](mle.q) | maximum-likelihood estimation of $(\mu,\alpha,\beta)$ on every day of the HDB, standard errors, coverage, goodness of fit |
 | [`feed.q`](feed.q) | replays one stored HDB day into a tickerplant in accelerated time |
 | [`sym.q`](sym.q) | kdb+tick schema for the `quote` table |
+| [`tick/tp.q`](tick/tp.q), [`tick/rdb.q`](tick/rdb.q) | minimal tickerplant (journal, subscriptions by table and symbol) and real-time database, same protocol as kdb+tick |
+| [`tests/`](tests) | unit and statistical tests (`run.q`), end-to-end test of the real-time path (`tick_smoke.sh`) |
 | [`docs/figures.py`](docs/figures.py) | Python port of the simulator that draws the two figures below |
 
 ---
@@ -158,14 +162,25 @@ q mle.q
 python docs/figures.py
 ```
 
-Real-time replay with the standard [kdb+tick](https://github.com/KxSystems/kdb-tick) scripts (place `sym.q` in `tick/`):
+Real-time replay, self-contained (three terminals, from the repository root):
 
 ```bash
-q tick.q sym . -p 5010          # tickerplant
-q tick/r.q :5010 -p 5011        # real-time database
+q tick/tp.q -p 5010             # tickerplant, journal in tplog/
+q tick/rdb.q :5010 -p 5011      # real-time database: stats[] , last1[`TSLA]
 q feed.q 60                     # replay the first HDB day at x60 (6h30 in 6 min 30 s)
 q feed.q 60 2024.01.03          # or a given day
 ```
+
+`tick/tp.q` and `tick/rdb.q` speak the kdb+tick protocol (`.u.upd`, `.u.sub`, journal replay with `-11!`), so the official [kdb+tick](https://github.com/KxSystems/kdb-tick) scripts can replace them (`q tick.q sym . -p 5010` with `sym.q` placed in `tick/`). Neither handles end of day: the replayed day stays in memory.
+
+### Tests
+
+```bash
+q tests/run.q                   # unit and statistical tests, no HDB needed, exit code 0 if all pass
+bash tests/tick_smoke.sh        # tp + rdb + feed on spare ports, checks the RDB matches the HDB day
+```
+
+`run.q` checks the recursions against brute-force $O(n^2)$ versions (compensator, log-likelihood), Nelder–Mead on Rosenbrock and a quadratic, the Hessian on a quadratic form, the simulator against its theoretical mean count and residual distribution, one end-to-end fit, and the 1 ms rounding effect on the KS test described above. Statistical checks use tolerances of about 5 standard deviations, so a failure points to a bug rather than to the seed.
 
 ---
 

@@ -1,13 +1,15 @@
 / =====================================================================
 / Feed: replays one day of the "hdbq" HDB into the tickerplant in
 / accelerated time, so the real-time stream is exactly a stored day.
-/ Usage: q feed.q [speed] [date]
+/ Usage: q feed.q [speed] [date] [port]
 /   speed: acceleration, default 60 -> a 6h30 session replayed in 6 min 30 s
 /   date : HDB partition to replay (YYYY.MM.DD), default the first day
-/ Requires hdbq (q hawkes_quotes.q) and a tickerplant on port 5010.
+/   port : tickerplant port, default 5010
+/ Requires hdbq (q hawkes_quotes.q) and a tickerplant (q tick/tp.q -p 5010).
 / =====================================================================
 
-h:@[hopen;`::5010;{-2"tickerplant unreachable on port 5010: ",x; exit 1}]
+tpPort:$[2<count .z.x; .z.x 2; "5010"]
+h:@[hopen;`$"::",tpPort;{-2"tickerplant unreachable on port ",tpPort,": ",x; exit 1}]
 spd:$[count .z.x; "F"$.z.x 0; 60f]
 \l lib/hawkes.q
 
