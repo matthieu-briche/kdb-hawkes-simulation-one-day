@@ -11,7 +11,7 @@ End-to-end simulation of an intraday bid/ask quote stream driven by **self-excit
 On real markets, events are not independent: a quote update tends to trigger further updates within milliseconds. A homogeneous Poisson process cannot reproduce this **clustering**. The Hawkes process can: each event temporarily raises the arrival intensity.
 
 $$
-\lambda(t) = \mu + \sum_{t_i < t} \alpha\, e^{-\beta (t - t_i)}
+\lambda(t) = \mu + \sum_{t_i < t} \alpha\ e^{-\beta (t - t_i)}
 $$
 
 | Parameter | Meaning | Value used |
